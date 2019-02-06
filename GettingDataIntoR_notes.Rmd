@@ -1,0 +1,221 @@
+---
+title: "Getting data into R"
+output:
+  html_document:
+    toc: yes
+    toc_float: true
+    toc_depth: 2
+---
+
+# Introduction
+
+One of the realities of business analytics or data science work is that
+your data could be in any number of places or formats. Examples include:
+
+* flat files delimited with commas, tabs, or some other character
+* non-flat structured text files such as JSON or XML
+* text files resulting from printer friendly reports redirected to a file
+* Excel files (xlsx or xls)
+* relational or non-relational databases
+* from the web
+    - downloadable files in some format such as csv, JSON or XML
+    - inside html tables or other parts of web pages
+    - via APIs
+* inside pdfs
+* Hadoop clusters
+* some other bizarre system or bizarre format :)
+
+Back in our Intro to R session we saw how to read csv, Excel and even
+a SQLite database into an R data frame. Now we'll revisit this topic and
+see a few more alternatives.
+
+## Reading CSV files
+
+As we saw a few weeks ago, `read.csv` and `read.table` provide a way to
+easily read csv files into an R data frame. The file might be local or
+sitting on a webbserver somewhere.
+
+```{r}
+tomatoURL <- "https://www.jaredlander.com/data/TomatoFirst.csv"
+tomatoLocal <- "data/TomatoFirst.csv"
+```
+
+R has a function called `read.table` for reading tabular text data files. 
+It also has a `read.csv` function which is just a wrapper for
+`read.table` with some of the arguments preset. Let's try both.
+
+```{r}
+tomato1 <- read.table(file=tomatoLocal, header=TRUE, sep=",")
+tomato2 <- read.csv(tomatoLocal)
+```
+
+Use `str` to check out their structure. You'll see they are identical.
+
+You might also notice that the character columns got automatically
+converted to factors. In this case, that's what we want. But sometimes
+we might have a character field that isn't a factor and might have
+a jillion unique values. If the data file is big, this conversion process
+can really slow stuff down. In that case it would be better to read things
+in as characters and then do conversion to factors only for those
+columns that we really want to be factors. 
+
+The auto conversion of character to factor occurs because the read functions
+have a parameter called `stringsAsFactors` that defaults to TRUE. 
+
+```{r}
+tomato3 <- read.csv(tomatoLocal, stringsAsFactors=FALSE)
+str(tomato3)
+class(tomato3$Source)
+```
+
+The auto conversion of strings to factors as well as the need for speed has
+inspired alternatives to `read.table`. 
+
+* The **readr** package has `read_delim` for reading delimited text files,
+* The **data.table** package has the `fread` function.
+
+Both are really fast and neither autoconverts strings to factors.
+
+The **readr** package is covered in Ch 8 of [r4ds](http://r4ds.had.co.nz/). We
+will just hit a few highlights here. However, Ch 8 goes into considerable
+detail about how **readr** parses text files and tries to figure out the
+data type of each column - frequently a non-trivial task. A few common, but tricky,
+complications that arise when reading text data include:
+
+* international numeric formats that use comma for the decimal point,
+* a myriad of date and time formats,
+* columns containing a mixture of numeric and text data,
+* different string encoding methods; ASCII is not universal.
+
+We'll revisit these later in the term. For now, let's keep it simple.
+
+```{r}
+library(readr)
+```
+
+```{r}
+tomato4 <- read_delim(file = tomatoLocal, delim = ',')
+tomato4
+class(tomato4)
+```
+
+Notice that `tomato4` is a `tibble`, not a `data.frame`. Tibbles are part of the
+**tidyverse** and provide a variant of data frames that:
+
+* print metadata such as column data types when displayed,
+* intelligently print as many columns as will fit on the screen,
+* don't do datatype conversions such as strings to factors automatically.
+* don't automatically create row names or modify column names
+
+Tibbles are covered in Ch 7 of [r4ds](http://r4ds.had.co.nz/). You really
+can think of tibbles as data frames in most cases. For some older R packages
+that might not work with tibbles, you can use the `as.data.frame` function
+to convert before using. The `as_tibble` function will convert a data frame
+into a tibble. While there are a few more differences between tibbles
+and data frames, for this class, we can use them pretty much interchangeably.
+
+Functions in **readr** for common special cases of comma, semicolon and tab 
+delimited are `read_csv`, `read_csv2`, and `read_tsv`.
+
+See Sections 6.1-6.3 of RforE as well as the **readcsv_notes.Rmd** file from
+our Intro to R session for more on reading text files, Excel files, and
+databases into data frames and/or tibbles.
+
+Section 6.4 in RforE discusses the packages **foreign** and **haven** for
+reading data from common statistical packages such as SAS, SPSS and Stata.
+
+## R binary files
+
+R provides a few ways to save one or more objects as binary files that
+can be reloaded at any time.
+
+### RData files
+
+`RData` files are binary files capable of handling one or more R objects of
+any kind.
+
+Let's see what objects we have in the workspace.
+
+```{r}
+ls()
+```
+
+Let's save the `tomato4` data frame (actually a tibble) and the tomatoURL (a
+string).
+
+```{r}
+save(tomato4, tomatoURL, file="data/tomato.rdata")
+```
+
+Now let's remove `tomato4` from the workspace and then reload it from the
+`RData` file.
+
+```{r}
+rm(tomato4) # Remove it
+head(tomato4) # Prove that it's gone - this should throw an error
+```
+
+Reload it.
+
+```{r}
+load("data/tomato.rdata")
+head(tomato4)
+```
+
+A few things to note:
+
+* the `load` command reloaded ALL of the objects in the `RData` file.
+* there is no way to use `load` to load just one of the objects in an `RData` file.
+* when we reloaded the tomato.rdata file, we overwrote any objects in the workspace
+that had the same name as an object in the file.
+* there's no way to load objects from an `RData` file into an object with a new name.
+
+## Binary RDS files
+
+An alternative to the all or nothing nature of `RData` files are `RDS` files. These
+are designed to save a single object WITHOUT its name.
+
+```{r}
+saveRDS(tomato4, "data/tomato4.rds")
+```
+
+When we read an `RDS` file we assign it to a new object.
+
+```{r}
+tomato5 <- readRDS("data/tomato4.rds")
+```
+
+The two objects, `tomato4` and `tomato5` should be identical.
+
+```{r}
+all(tomato4 == tomato5, na.rm = TRUE)
+```
+
+## Built in data and packaged data
+
+One really nice feature of R is that it contains a number of built in datasets.
+This makes it easy to get going with trying to learn R. Also, it's easy to 
+compare your results with those of others who use one of the built in datasets
+to show how to accomplish some task in R. In addition to R itself, many
+packages come with datasets built in. We've already seen how **ggplot** incudes
+the `diamonds` dataset. Loading built in data is easy with the `data` function.
+
+```{r}
+data(diamonds, package = "ggplot2")
+head(diamonds)
+```
+
+Here's information on all the datasets built into the R `datasets` package.
+
+```{r}
+data()
+```
+
+## Extracting data from web sites and JSON files
+
+Sections 6.7 and 6.8 in RforE cover this topic. We will hold off on it for now
+but will return to it when we cover getting data from the web using Python.
+Python has some very widely used tools for web scraping such as **BeautifulSoup**
+and we'll also see that Python dictionaries have a lot in common with JSON
+files. So, we'll come back to this in a few weeks.
+

@@ -1,0 +1,619 @@
+---
+title: "Data reshaping"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+  html_notebook:
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+---
+
+Data Reshaping
+========================================================
+
+Often as part of the (seemingly endless) process of getting data ready for analysis, you may
+need to do things like:
+
+* combine data from separate sources into a single `data.frame`
+* rearrange data from column oriented (wide format) to row oriented (long format) and vice-versa
+* join tables that are related by one or more key fields
+
+We will see how packages such as **plyr**, **dplyr**, **data.table**,
+**reshape2** and **tidyr** can help in this regard.
+
+IMPORTANT: If using both plyr and dplyr, it is recommended that you load
+plyr first, then dplyr.
+
+```{r}
+# plyr first always, before dplyr
+
+library(plyr)
+library(dplyr)
+library(ggplot2)
+```
+
+
+Let's load the latest version of our housing data.
+
+```{r}
+load("data/housing2.rdata")
+str(housing)
+```
+
+Combining data
+--------------
+See Section 14.1 in RforE.
+
+* `cbind` binds columns together (each component vector should have same # rows but will use longest vector)
+* `rbind` binds rows togethers (each component data.frame should have same columns)
+
+### Combining rows
+
+Let's break up housing into five separate pieces by Boro. Perhaps we might have
+gotten the data originally in pieces like this.
+
+```{r}
+housing_man <- housing[housing$Boro == "Manhattan",]
+housing_q <- housing[housing$Boro == "Queens",]
+housing_si <- housing[housing$Boro == "Staten Island",]
+housing_brk <- housing[housing$Boro == "Brooklyn",]
+housing_bnx <- housing[housing$Boro == "Bronx",]
+head(housing_bnx)
+```
+
+We can use `rbind` to put the pieces back together again.
+
+```{r}
+housing_allboros <- rbind(housing_man, housing_q, housing_si, housing_brk, housing_bnx)
+```
+
+The **dplyr** package has its own version called `bind_rows` which only works
+with data frames (or tibbles). 
+
+```{r}
+housing_allboros_dplyr <-
+  bind_rows(housing_man,housing_q,housing_si,housing_brk,housing_bnx)
+
+```
+
+```{r}
+class(housing_allboros)
+class(housing_allboros_dplyr)
+```
+
+### Combining columns
+
+A simple example of `cbind` is shown in Section 14.1 of RforE.
+
+```{r}
+# Make three vectors and use cbind to combine them into a 3-column data structure
+sport <- c("Hockey","Baseball","Football")
+league <- c("NHL","MLB","NFL")
+trophy <- c("Stanley Cup","Commissioner's Trophy","Vince Lombardi Trophy")
+
+trophies <- cbind(sport,league,trophy)
+str(trophies)
+trophies
+```
+
+**Questions**
+
+* what kind of data structure is trophies?
+
+```{r}
+class(trophies)
+```
+
+* create a new vector called numteams and set it equal to the numeric vector c(30,30,32)
+* use cbind to create a new data.frame called trophies2 based on trophies and numteams
+* what kind of data structure is trophies2?
+
+```{r}
+numteams <- c(30,30,32)
+trophies2 <- cbind(trophies, numteams)
+class(trophies2)
+```
+
+
+Again, we get a chr matrix.
+
+* Hmmm, so how can we get a data.frame containing these four vectors with the numteams as numeric and the rest as character?
+
+```{r}
+trophies3 <- data.frame(trophies,numteams)
+class(trophies3)
+```
+
+The **dplyr** version is called `bind_cols`. Unfortunately, the following
+won't work. Why not?
+
+```{r}
+#trophies_dplyr <- bind_cols(sport,league,trophy)
+```
+
+
+
+
+
+
+
+Kind of a misleading error message since giving the list a name still doesn't
+solve the problem.
+
+```{r}
+names(sport) <- "sport"
+names(league) <- "league"
+names(trophy) <- "trophy"
+# trophies_dplyr <- bind_cols(sport,league,trophy)
+```
+
+Looking at help, while the above should work, `bind_cols` will definitely
+work with dataframes as the arguments.
+
+```{r}
+trophies_dplyr <- bind_cols(data.frame(sport),
+                                   data.frame(league),
+                                   data.frame(trophy))
+
+```
+
+
+
+### Joining tables by key values
+
+Another way that you might want to combine data structures is via something like a SQL join. As an example we'll use data from a [Kaggle competition involving
+data from Seattle's bike sharing program](https://www.kaggle.com/pronto/cycle-share-dataset). There are three
+tables of data:
+
+* trip.csv - one row per bike rental
+* station.csv - one row per station
+* weather.csv - one row per date
+
+In the original `trip.csv` file there are ~287,000 records. I used the Linux
+`head` command to create a small 1000 record sample to use for now. We'll revisit
+the full trip file later.
+
+```{r}
+trip1000 <- read.csv(file = "data/cycle_share/trip1000.csv")
+View(trip1000)
+```
+
+```{r}
+station <- read.csv(file = "data/cycle_share/station.csv")
+View(station)
+```
+
+A nice feature of the built in `merge` function is that the key columns
+do not need to have the same names (unlike the **plyr** `join` - see Sec 14.2.2).
+
+```{r}
+trip1000_geo <- merge(x = trip1000, y = station,
+                      by.x = "from_station_id",
+                      by.y = "station_id")
+```
+
+With the merged data frame we can compute the number of trips by station.
+
+```{r}
+trips_by_station <- trip1000_geo %>%
+  group_by(from_station_id, lat, long) %>%
+  summarize(
+    numtrips = n()
+  )
+```
+
+Now we'll use some of `ggplot2`'s built in mapping capabilities to
+quickly create a rough map showing number of rentals by station
+and plotted on a map of Seattle, Washington. A
+few useful links include:
+
+* https://eriqande.github.io/rep-res-eeb-2017/map-making-in-R.html
+* https://www.kaggle.com/davidthaler/pronto-in-depth
+* http://www.peterhaschke.com/r/2013/12/05/NCmaps.html
+
+
+```{r}
+install.packages("UScensus2000cdp")
+library(UScensus2000cdp)
+```
+
+```{r}
+data("washington.cdp")
+seamap <- subset(washington.cdp, washington.cdp$name=='Seattle')
+seamap <- SpatialPolygons(seamap@polygons, seamap@plotOrder, 
+                          proj4string =CRS(proj4string(seamap)))
+```
+
+```{r}
+sourcevol_map <- ggplot(data=seamap, aes(long, lat, group = group)) +
+  geom_polygon(fill = "blue", color = "black") +
+  geom_point(data = trips_by_station, 
+             aes(x = long, y = lat, size = numtrips), inherit.aes=F) +
+  coord_map()
+  
+
+sourcevol_map
+```
+
+Still needs a lot of work but it's a start. :) Check out this Kaggle Kernel if
+want to know more - https://www.kaggle.com/davidthaler/pronto-in-depth. Here's
+some more code from that Kernel that zooms in on the stations.
+
+```{r}
+# install.packages("rgeos")
+# Some Linux hackery needed: https://stackoverflow.com/questions/38924767/error-installing-r-package-for-linux
+
+# sudo apt-get install libgeos-dev
+library(rgeos)
+```
+
+```{r}
+ymx <- 47.68
+ymn <- 47.57
+xmn <- -122.5
+xmx <- -122.2
+coords <- c(xmn, ymn, xmn, ymx, xmx, ymx, xmx, ymn, xmn, ymn)
+coords <- matrix(coords, nrow=5, byrow=TRUE)
+p <- Polygon(coords, hole=FALSE)
+p <- Polygons(list(p), 'viewport')
+p <- SpatialPolygons(list(p), proj4string = CRS(proj4string(seamap)))
+sm.map <- rgeos::gIntersection(seamap, p)
+
+g <- ggplot(sm.map, aes(x=long, y=lat, group=group)) + geom_polygon(fill="green")
+g <- g + geom_point(data = trips_by_station, 
+             aes(x = long, y = lat, size = numtrips, color = numtrips), inherit.aes=F)
+g <- g + ggtitle('Pronto Stations Sized by Volume')
+g + coord_map() 
+```
+
+
+Working with data, especially from databases, frequently requires merging tables
+in order to create a data frame amenable to the analysis you want to do. So, I suggest
+that all analysts:
+
+* learn SQL and understand relational databases,
+* learn how to use the built in `merge` command,
+* explore some of the other options for joining tables including the various `*_join`
+functions in **dplyr** (Ch 10 in [r4ds](http://r4ds.had.co.nz/) and Sec 15.2 in RforE) or the `merge` function in **data.table** (14.2.3 in RforE).
+* learn to use the merge related function in the Python package **pandas** (we'll do this later in the semester).
+
+Reshaping data the pre-**tidyverse** way
+----------------------------------------
+
+Another common data preparation task is something known as reshaping data - switching between long and wide formats. Let's
+see what a wide formatted dataset looks like. In the Downloads folder you'll find a subfolder called **USAid** containing 
+one data file per decade. Get the file **US_Foreign_Aid_00s.csv** into a `data.frame` named `USAid00`.
+
+```{r}
+USAid00 <- read.table("data/USAid/US_Foreign_Aid_00s.csv",sep=",",header=TRUE)
+head(USAid00)
+tail(USAid00)
+str(USAid00)
+```
+
+This dataset is in "wide format" because each fiscal year is stored in a
+separate column. If you were creating graphs in Excel and you wanted to show one
+series per year, this format would be fine. However, it's not so great for most
+statistics packages, including R. It is much more convenient to have a column
+called something like "FiscalYear" that that takes on the values "FY2000",
+"FY2001", ..., "FY2009". And, we'd likely treat this column as a factor. So, the
+`reshape2` library has the aptly named `melt` function that melts the multiple
+columns into a single column.
+
+
+
+```{r}
+# load the reshape2 library
+library(reshape2)  # A library for melting and casting data into different shapes
+library(stringr)   # A library for string manipulation
+```
+
+If you think about it, we need to specify a few things to melt this thing correctly:
+
+* specify which columns are NOT to be melted -> Country.Name and Program.Name
+* specify the name for the column into which the current column headings will be melted --> Let's call it FY
+* specify the name for the column into which the individual data vales will be melted --> Let's call it Dollars
+
+```{r}
+melt00 <- melt(USAid00,id.vars=c("Country.Name", "Program.Name"),
+               variable.name="FY", value.name="Dollars")
+head(melt00)
+tail(melt00)
+str(melt00)
+```
+
+Note that we ended up with 3 factors and 1 numeric column. And, we've got a whole lot more rows and whole lot less columns. Perfect.
+Now we can do things using **plyr** and **ggplot2**. First, let's do something easy like total spending by program over the ten years.
+
+```{r plyr_spending}
+# Using plyr
+ddply(melt00,.(FY), summarize, TotSpending = sum(Dollars,na.rm=TRUE))
+
+
+# Try summing by program by year
+ddply(melt00,.(Program.Name,FY), summarize, TotSpending=sum(Dollars,na.rm=TRUE))
+```
+
+How would you do the above in dplyr?
+
+```{r dplyr_spending}
+# Using dplyr
+melt00 %>% 
+  group_by(FY) %>% 
+  summarize(
+    TotSpending = sum(Dollars,na.rm=TRUE)
+  )
+
+# Try summing by program by year
+melt00 %>% 
+  group_by(Program.Name, FY) %>% 
+  summarize(
+    TotSpending = sum(Dollars,na.rm=TRUE)
+  )
+```
+Now, for something a little more complicated. Let's create a set of time series
+plots showing yearly spending by Program. This is done starting on p197 in
+**RforE**. I'll add a little more explanation. Here's the goal:
+
+```{r}
+knitr::include_graphics('images/ts_facet.png')
+```
+
+
+Here's our multi-step strategy:
+
+* in order to make it easier to control order of the x-axis labels, let's create a numeric Year column.
+* use `aggregate` to do the summation over countries so that we end up with a melted `data.frame` with Dollars by Program by Year
+* create shortened versions of the program names to use as plot titles
+* use ANOTHER Hadley Wickham library called `scales` to make it easier to fiddle with axes on our plots
+
+The first and third items involve string manipulation. As you might have guessed, R has several functions related to basic and more
+advanced string manipulation. Chapter 16 in **RforE** hits some of the highlights. For now, I'm just going to mention a few functions:
+
+* string concatenation is done with the `paste` function
+* substring grabbing (like Excel's MID() function) is done using `str_sub`.
+* there's yet another great Hadley Wickham package called `stringr` that tries to improve upon the base R string manipulation capabilities (see Ch 11 in r4ds)
+
+```{r}
+paste("Oakland","University")
+```
+
+Look carefully at the output. Notice anything? What if you had a bunch of last names and you wanted to create
+email addresses by concatenating "@oakland.edu"
+
+```{r}
+paste("isken","@oakland.edu")
+paste("isken","@oakland.edu", sep = "")
+```
+
+Uh oh. Figure out how to fix this. It can be fixed using `paste`, `paste0` or take a look at the Help for the **stringr** package.
+
+The **stringr** analogous function to `paste` is called `str_c`. In fact,
+that's one very nice things about the **stringr** package - all the functions
+start with `str_`. This along with tab completion eases the burden of remembering
+a bunch of function names. 
+
+**Question** How might you find the length of a string?
+
+```{r}
+s <- "bookkeeper"
+# Find length of s using stringr function
+str_length(s)
+```
+
+
+To get a substring, we can use the **stringr** `str_sub` function. 
+Here's `str_sub` in action. Notice that it's a little different than Excel's MID() function. How?
+
+```{r}
+str_sub(s, start=2, end=7)
+str_sub(s, start=2, 7)
+str_sub(s, 2, 7)
+```
+
+Anyhoo, now we can create our plots. 
+
+```{r}
+library(scales)
+```
+
+**Step 1: Start by creating a numeric Year column in `melt00`**
+
+```{r}
+# Try this... Hints: substring and using an 'as' function
+
+
+
+
+
+
+
+
+
+
+
+
+
+melt00$Year <- as.numeric(str_sub(melt00$FY,3,6))
+```
+
+**Step 2: Aggregate by summing over the countries to get spending by program by year**
+
+```{r}
+melt00Agg <- aggregate(Dollars ~ Program.Name + Year, data=melt00, sum, na.rm=TRUE)
+```
+
+doing it with dplyr
+
+```{r}
+melt00 %>%
+  group_by(Program.Name, Year) %>% 
+  summarize(
+    Dollars = sum(Dollars, na.rm = TRUE)
+  )
+
+```
+
+
+
+Hey, we did that earlier with `ddply`, didn't we? Often several ways
+to do things, especially via different packages.
+
+**Step 3: Create shorter program names for plot titles**
+
+```{r}
+melt00Agg$Prog.Name <- str_sub(melt00Agg$Program.Name,1,10)
+```
+
+**Step 4: Create the faceted plots**
+
+Look at each part carefully and figure out how it all works. You'll likely need to use
+ggplot2 help and the mighty Google. I'm going to do it in a couple of steps so that we
+can focus on some of the new pieces.
+
+```{r}
+gmelt00Agg <- ggplot(melt00Agg, aes(x=Year, y=Dollars)) +
+  geom_line(aes(group=Prog.Name)) +
+  facet_wrap(~Prog.Name)
+
+gmelt00Agg
+```
+
+Notice that both the x and y axis labels are not terribly nice looking.
+
+```{r}
+gmelt00Agg <- gmelt00Agg + 
+  scale_x_continuous(breaks=seq(from=2000, to=2009, by=2))
+
+gmelt00Agg
+```
+
+You can use `theme` to tweak things like x-axis label orientation and placement
+
+```{r}
+gmelt00Agg <- gmelt00Agg + 
+  theme(axis.text.x=element_text(angle=90, vjust=1, hjust=0))
+
+gmelt00Agg
+```
+
+Finally, let's get rid of the scientific notation on the y-axis. To do that, we are going to use a few more libraries including `scales` from Hadley Wickham and `useful` from our RforE author, Jared Lander.
+
+```{r}
+#install.packages("useful")
+library(useful)
+```
+
+```{r}
+
+gmelt00Agg <- gmelt00Agg + scale_y_continuous(labels=multiple_format(extra=dollar, multiple="B"))
+
+gmelt00Agg
+```
+
+Whew! While that took a little work, we learned a lot along the way.
+
+The opposite of melting is casting (think of molten metal). It's a little 
+trickier than melting. See p200 in RforE and`help(dcast)` for the details. The
+key to the second argument is that the order of the variables should be from
+"slowest varying" to "fastest varying". For example, Country.Name is listed a
+bunch of times; once for each Program.Name. So, Country.Name varies slower than 
+Program.Name and should be listed first.
+
+```{r}
+cast00 <- dcast(melt00,Country.Name + Program.Name ~ Year,
+                value.var="Dollars")
+
+head(cast00)
+```
+
+The `reshape2` package comes in very handy for switching betweed wide and long
+format based on the needs of your analysis. For those coming from a very
+Excel-centric analysis background, it requires a bit of a mind shift to see
+how long format gives you all kinds of extra power within R (and other analytics
+packages) for doing things like facet plots.
+
+Reshaping data the **tidyverse** way
+------------------------------------
+
+This is based on [Tidy data chapter in r4ds](http://r4ds.had.co.nz/).
+
+*Tidy data* is a way to organize you data to make it easy to analyze
+with tools like **dplyr**, **gplot2**, and other packages in the the **tidyverse**.
+
+Just has **dplyr** has larger supplanted **plyr**, **tidyr** is the HW
+successor to **reshape2**.
+
+```{r}
+library(tidyr)
+```
+
+Three rules of tidiness:
+
+* Each variable must have its own column
+* Each observation must have its own row
+* Each value must have its own cell
+
+This also leads to:
+
+* Each dataset gets its own tibble (or data frame)
+* Each variable gets its own column in that tibble or data frame
+
+A good example of non-tidy data was the USAid data we saw in the
+**DataReshaping.Rmd** document. In that data, each fiscal year got its
+own column even though each was storing values for the same variable, spending.
+We made it tidy by using the `melt` function from the **reshape2** package.
+
+Let's look at a similar example but on a much small scale. Here are four
+different representations of the same data. Which are tidy?
+
+```{r}
+table1
+table2
+table3
+
+# Spread across two tibbles
+table4a  # cases
+table4b  # population
+```
+
+**Questions**
+We didn't read the above data in. Where did it come from?
+
+Look at `table4a`. Is it in long or wide format? What **reshape2** function
+would transform this to make it tidy?
+
+## From wide format to long
+
+The **tidyr** version of **reshape2**'s `melt` function is called `gather`. Think
+of gathering up a bunch of columns and converting them to two new columns - one
+holding the values of the variable represented by the column headings and one
+holding the variable values. Here's how we'd transform `table4`. In true
+**tidyverse** form, I'll use the pipe.
+
+```{r}
+table4a %>%
+  gather('1999', '2000', key = "year", value = "cases")
+```
+
+You do it for `table4b`.
+
+```{r}
+knitr::include_graphics('images/tidy_9.png')
+```
+
+
+
+Spreading is the opposite of gathering and **tidyr** provides `spread` to
+do what `dcast` does in **reshape2**. I'll let you take a look at that yourself.
+
+## Learn more
+
+There's a nice blog post comparing **tidyr** and **reshape2** with respect
+to various data reshaping tasks. See [http://remi-daigle.github.io/tidyr_reshape2_lesson/](http://remi-daigle.github.io/tidyr_reshape2_lesson/).
+
+The underlying theory of tidy data is discussed in a paper by HW in
+the Journal of Statistical Software. You can access it from [http://www.jstatsoft.org/v59/i10/paper](http://www.jstatsoft.org/v59/i10/paper).
